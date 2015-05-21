@@ -68,9 +68,9 @@ Usage
 There are three utilities in this package, as well as the bundles and
 FirmwareBundles folders from PwnageTool, and Turbo's autopwn ramdisk.
 
-*NOTE: Img3 decoding has been changed in newer firmwares (>= 3.1). Backwards
-compatibility with older firmwares is achieved by passing "--old-img3-decrypt"
-to idevice, imagetool, ipsw, xpwntool.*
+*NOTE: In newer firmwares (>= 3.1), Img3 with lzss data needs to be decrypted
+slightly differently. Backwards compatibility with older firmwares is achieved
+by passing "--old-img3-decrypt" to idevice, imagetool, ipsw, xpwntool.*
 
 ## Overview
 
@@ -95,7 +95,7 @@ that's how the jailbreak actually occurs.
 
 	./ipsw <input.ipsw> <output.ipsw> [-b <bootimage.png>] [-nowipe] \
 		[-bbupdate] [-s <disk0s1 size>]  [-r <recoveryimage.png>] \
-		[-memory] [-e "<action to exclude>"] \
+		[-memory] [-e "<action to exclude>"] [-ramdiskgrow <blocks>] \
 		[[-unlock] [-use39] [-use46] [-cleanup] \
 		-3 <bootloader 3.9 file> -4 <bootloader 4.6 file>] \
 		<package1.tar> <package2.tar>...
@@ -111,7 +111,9 @@ The most common use of the '-e' flag is to disable automatic activation, i.e.
 '-e "Phone Activation"'. Note that the double-quotes are necessary.
 
 -s allows you to specify the size of the system partition. This value is
-specified in megabytes (NOT mebibytes)
+specified in mebibytes (binary megabytes)
+
+-ramdiskgrow allows you to enlarge the ramdisk. Use if ramdisk creation fails.
 
 -memory allows you to specify that memory instead of temporary files should be
 used whenever possible (no longer the default).

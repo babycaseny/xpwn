@@ -19,6 +19,7 @@ typedef struct
 	uint32_t	bits;
 	uint8_t		keybuf[32];
 	uint32_t	mask;
+	uint32_t	wtf0; /* required since 4.1, unused as of 4.3.3 */
 } IOAESStruct;
 
 #define kIOAESAcceleratorInfo 0
@@ -69,6 +70,9 @@ IOReturn doAES(io_connect_t conn, void* inbuf, void *outbuf, uint32_t size, IOAE
 		memset(in.iv, 0, 16);
 
 	IOByteCount inSize = sizeof(in);
+	if (kCFCoreFoundationVersionNumber < 550.38) {
+		inSize -= sizeof(in.wtf0);
+	}
 
 	return IOConnectCallStructMethod(conn, kIOAESAcceleratorTask, &in, inSize, &in, &inSize);
 }

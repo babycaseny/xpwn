@@ -88,6 +88,7 @@ int main(int argc, char* argv[]) {
 	unsigned int* pRamdiskIV = NULL;
 	io_func* ramdiskFS;
 	Volume* ramdiskVolume;
+	size_t ramdiskGrow = 0;
 
 	char* updateRamdiskFSPathInIPSW = NULL; 
 
@@ -126,7 +127,7 @@ int main(int argc, char* argv[]) {
 	unsigned int* pIV = NULL;
 
 	if(argc < 3) {
-		XLOG(0, "usage %s <input.ipsw> <target.ipsw> [-b <bootimage.png>] [-r <recoveryimage.png>] [-s <system partition size>] [-memory] [-bbupdate] [-nowipe] [-e \"<action to exclude>\"] [[-unlock] [-use39] [-use46] [-cleanup] -3 <bootloader 3.9 file> -4 <bootloader 4.6 file>] <package1.tar> <package2.tar>...\n", argv[0]);
+		XLOG(0, "usage %s <input.ipsw> <target.ipsw> [-b <bootimage.png>] [-r <recoveryimage.png>] [-s <system partition size>] [-memory] [-bbupdate] [-nowipe] [-e \"<action to exclude>\"] [-ramdiskgrow <blocks>] [[-unlock] [-use39] [-use46] [-cleanup] -3 <bootloader 3.9 file> -4 <bootloader 4.6 file>] <package1.tar> <package2.tar>...\n", argv[0]);
 		return 0;
 	}
 
@@ -149,6 +150,14 @@ int main(int argc, char* argv[]) {
 			int size;
 			sscanf(argv[i + 1], "%d", &size);
 			preferredRootSize = size;
+			i++;
+			continue;
+		}
+
+		if(strcmp(argv[i], "-ramdiskgrow") == 0) {
+			int size;
+			sscanf(argv[i + 1], "%d", &size);
+			ramdiskGrow = size;
 			i++;
 			continue;
 		}
@@ -347,18 +356,18 @@ int main(int argc, char* argv[]) {
 	rootFSPathInIPSW = fileValue->value;
 
 	size_t defaultRootSize = ((IntegerValue*) getValueByKey(info, "RootFilesystemSize"))->value;
-	minimumRootSize = defaultRootSize * 1000 * 1000;
+	minimumRootSize = defaultRootSize * 1024 * 1024;
 	minimumRootSize -= minimumRootSize % 512;
 
 	if(preferredRootSize == 0) {	
 		preferredRootSize = defaultRootSize;
 	}
 
-	rootSize =  preferredRootSize * 1000 * 1000;
+	rootSize =  preferredRootSize * 1024 * 1024;
 	rootSize -= rootSize % 512;
 
 	if(useMemory) {
-		buffer = malloc(rootSize);
+		buffer = calloc(1, rootSize);
 	} else {
 		buffer = NULL;
 	}
@@ -429,8 +438,30 @@ int main(int argc, char* argv[]) {
 		ramdiskFS = IOFuncFromAbstractFile(openAbstractFile(getFileFromOutputStateForOverwrite(&outputState, ramdiskFSPathInIPSW)));
 	}
 	ramdiskVolume = openVolume(ramdiskFS);
-	XLOG(0, "growing ramdisk: %d -> %d\n", ramdiskVolume->volumeHeader->totalBlocks * ramdiskVolume->volumeHeader->blockSize, (ramdiskVolume->volumeHeader->totalBlocks + 4) * ramdiskVolume->volumeHeader->blockSize);
-	grow_hfs(ramdiskVolume, (ramdiskVolume->volumeHeader->totalBlocks + 4) * ramdiskVolume->volumeHeader->blockSize);
+	XLOG(0, "growing ramdisk: %d -> %d\n", ramdiskVolume->volumeHeader->totalBlocks * ramdiskVolume->volumeHeader->blockSize, (ramdiskVolume->volumeHeader->totalBlocks + ramdiskGrow) * ramdiskVolume->volumeHeader->blockSize);
+	grow_hfs(ramdiskVolume, (ramdiskVolume->volumeHeader->totalBlocks + ramdiskGrow) * ramdiskVolume->volumeHeader->blockSize);
+
+	firmwarePatches = (Dictionary*)getValueByKey(info, "RamdiskPatches");
+	if(firmwarePatches != NULL) {
+		patchDict = (Dictionary*) firmwarePatches->values;
+		while(patchDict != NULL) {
+			fileValue = (StringValue*) getValueByKey(patchDict, "File");
+
+			patchValue = (StringValue*) getValueByKey(patchDict, "Patch");
+			if(patchValue) {
+				patchPath = (char*) malloc(sizeof(char) * (strlen(bundlePath) + strlen(patchValue->value) + 2));
+				strcpy(patchPath, bundlePath);
+				strcat(patchPath, "/");
+				strcat(patchPath, patchValue->value);
+
+				XLOG(0, "patching %s (%s)... ", fileValue->value, patchPath);
+				doPatchInPlace(ramdiskVolume, fileValue->value, patchPath);
+				free(patchPath);
+			}
+		
+			patchDict = (Dictionary*) patchDict->dValue.next;
+		}
+	}
 
 	if(doBootNeuter) {
 		firmwarePatches = (Dictionary*)getValueByKey(info, "BasebandPatches");
@@ -471,12 +502,18 @@ int main(int argc, char* argv[]) {
 		fixupBootNeuterArgs(rootVolume, unlockBaseband, selfDestruct, use39, use46);
 	}
 
-	createRestoreOptions(ramdiskVolume, preferredRootSize, updateBB);
+	StringValue* optionsValue = (StringValue*) getValueByKey(info, "RamdiskOptionsPath");
+	const char *optionsPlist = optionsValue ? optionsValue->value : "/usr/local/share/restore/options.plist";
+	createRestoreOptions(ramdiskVolume, optionsPlist, preferredRootSize, updateBB);
 	closeVolume(ramdiskVolume);
 	CLOSE(ramdiskFS);
 
 	if(updateRamdiskFSPathInIPSW)
-		removeFileFromOutputState(&outputState, updateRamdiskFSPathInIPSW);
+		removeFileFromOutputState(&outputState, updateRamdiskFSPathInIPSW, TRUE);
+
+	BoolValue *removeBB = (BoolValue*) getValueByKey(info, "DeleteBaseband");
+	if (removeBB && removeBB->value)
+		removeFileFromOutputState(&outputState, "Firmware/ICE*", FALSE);
 
 	closeVolume(rootVolume);
 	CLOSE(rootFS);
