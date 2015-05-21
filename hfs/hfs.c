@@ -4,6 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <hfs/hfsplus.h>
+#include <dmg/dmgfile.h>
+#include <dmg/filevault.h>
 #include <dirent.h>
 
 #include <hfs/hfslib.h>
@@ -14,10 +16,31 @@ char endianness;
 
 
 void cmd_ls(Volume* volume, int argc, const char *argv[]) {
-	if(argc > 1)
-		hfs_ls(volume, argv[1]);
-	else
-		hfs_ls(volume, "/");
+	int flags = 0;
+	const char *path = "/";
+	while (argc > 1) {
+		const char *p = argv[1];
+		if (*p == '-') {
+			int fl = 0;
+			while (*++p) switch (*p) {
+				case 'l': fl |= 1; break;
+				case 'R': fl |= 2; break;
+				default: fl = -1;
+			}
+			if (fl > 0) {
+				argc--;
+				argv++;
+				flags |= fl;
+				continue;
+			}
+		}
+		path = argv[1];
+		break;
+	}
+	if (flags)
+		hfs_list(volume, path, flags & 2);
+	else 
+		hfs_ls(volume, path);
 }
 
 void cmd_cat(Volume* volume, int argc, const char *argv[]) {
@@ -44,13 +67,21 @@ void cmd_cat(Volume* volume, int argc, const char *argv[]) {
 void cmd_extract(Volume* volume, int argc, const char *argv[]) {
 	HFSPlusCatalogRecord* record;
 	AbstractFile *outFile;
+	const char *outName;
 	
 	if(argc < 3) {
+		if (argc == 2) {
+			char *p = strrchr(argv[1], '/');
+			outName = p ? ++p : argv[1];
+			goto do_extract;
+		}
 		printf("Not enough arguments");
 		return;
 	}
+	outName = argv[2];
+do_extract:
 	
-	outFile = createAbstractFileFromFile(fopen(argv[2], "wb"));
+	outFile = createAbstractFileFromFile(fopen(outName, "wb"));
 	
 	if(outFile == NULL) {
 		printf("cannot create file");
@@ -142,6 +173,16 @@ printf(argv[2]);
 		chmodFile(argv[2], mode, volume);
 	} else {
 		printf("Not enough arguments");
+	}
+}
+
+void cmd_chown(Volume* volume, int argc, const char *argv[]) {
+	uint32_t uid, gid;
+	
+	if(argc > 2 && sscanf(argv[1], "%u:%u", &uid, &gid) == 2) {
+		chownFile(argv[2], uid, gid, volume);
+	} else {
+		printf("usage: chown uid:gid path\n");
 	}
 }
 
@@ -249,7 +290,6 @@ void cmd_untar(Volume* volume, int argc, const char *argv[]) {
 	if(inFile == NULL) {
 		printf("file to untar not found");
 	}
-	
 	hfs_untar(volume, inFile);
 }
 
@@ -298,15 +338,25 @@ void TestByteOrder()
 int main(int argc, const char *argv[]) {
 	io_func* io;
 	Volume* volume;
+	AbstractFile* image;
 	
 	TestByteOrder();
 	
 	if(argc < 3) {
-		printf("usage: %s <image-file> <ls|cat|mv|mkdir|add|rm|chmod|chown|extract|extractall|rmall|addall|debug|symlink|getattr|grow|untar> <arguments>\n", argv[0]);
+		printf("usage: %s <image-file> (-k <key>) <ls|cat|mv|symlink|mkdir|add|rm|chmod|chown|extract|extractall|rmall|addall|grow|untar|getattr|debug> <arguments>\n", argv[0]);
 		return 0;
 	}
 	
-	io = openFlatFile(argv[1]);
+	image = createAbstractFileFromFile(fopen(argv[1], "r+b"));
+	if(argc > 3 && strcmp(argv[2], "-k") == 0) {
+		AbstractFile *tmp = createAbstractFileFromFileVault(image, argv[3]);
+		if (tmp) {
+			image = tmp;
+		}
+		argc -= 2;
+		argv += 2;
+	}
+	io = openDmgFilePartition(image, -1);
 	if(io == NULL) {
 		fprintf(stderr, "error: Cannot open image-file.\n");
 		return 1;

@@ -26,7 +26,8 @@ typedef struct StringValue {
 
 typedef struct DataValue {
 	DictValue dValue;
-	char* value;
+	int len;
+	unsigned char* value;
 } DataValue;
 
 typedef struct IntegerValue {

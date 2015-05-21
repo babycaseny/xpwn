@@ -74,33 +74,26 @@ void releaseArray(ArrayValue* myself) {
 	int i;
 	
 	free(myself->dValue.key);
-	for (i = 0; i < myself->size; i++) {
-		switch (myself->values[i]->type) {
-		case DictionaryType:
-			releaseDictionary((Dictionary*) myself->values[i]);
-			break;
-
-		case ArrayType:
-			releaseArray((ArrayValue*) myself->values[i]);
-			break;
-
-		case StringType:
-			free(((StringValue*) (myself->values[i]))->value);
-			free(myself->values[i]->key);
-			free(myself->values[i]);
-			break;
-
-		case DataType:
-			free(((DataValue*) (myself->values[i]))->value);
-			free(myself->values[i]->key);
-			free(myself->values[i]);
-			break;
-
-		case BoolType:
-		case IntegerType:
-			free(myself->values[i]->key);
-			free(myself->values[i]);
-			break;
+	for(i = 0; i < myself->size; i++) {
+		switch(myself->values[i]->type) {
+			case DictionaryType:
+				releaseDictionary((Dictionary*) myself->values[i]);
+				break;
+			case ArrayType:
+				releaseArray((ArrayValue*) myself->values[i]);
+				break;
+			case StringType:
+				free(((StringValue*)(myself->values[i]))->value);
+				free(myself->values[i]->key);
+				free(myself->values[i]);
+				break;
+			case DataType:
+				free(((DataValue*)(myself->values[i]))->value);
+			case BoolType:
+			case IntegerType:
+				free(myself->values[i]->key);
+				free(myself->values[i]);
+				break;
 		}
 	}
 	free(myself->values);
@@ -118,31 +111,24 @@ void releaseDictionary(Dictionary* myself) {
 		next = next->next;
 
 		switch(toRelease->type) {
-		case DictionaryType:
-			releaseDictionary((Dictionary*) toRelease);
-			break;
-
-		case ArrayType:
-			releaseArray((ArrayValue*) toRelease);
-			break;
-
-		case StringType:
-			free(((StringValue*) (toRelease))->value);
-			free(toRelease->key);
-			free(toRelease);
-			break;
-
-		case DataType:
-			free(((DataValue*) (toRelease))->value);
-			free(toRelease->key);
-			free(toRelease);
-			break;
-
-		case IntegerType:
-		case BoolType:
-			free(toRelease->key);
-			free(toRelease);
-			break;
+			case DictionaryType:
+				releaseDictionary((Dictionary*) toRelease);
+				break;
+			case ArrayType:
+				releaseArray((ArrayValue*) toRelease);
+				break;
+			case StringType:
+				free(((StringValue*)(toRelease))->value);
+				free(toRelease->key);
+				free(toRelease);
+				break;
+			case DataType:
+				free(((DataValue*)(toRelease))->value);
+			case IntegerType:
+			case BoolType:
+				free(toRelease->key);
+				free(toRelease);
+				break;
 		}
 	}
 	free(myself);
@@ -176,18 +162,15 @@ void createArray(ArrayValue* myself, char* xml) {
 		} else if (strcmp(valueTag->name, "string") == 0) {
 			curValue->type = StringType;
 			curValue = (DictValue*) realloc(curValue, sizeof(StringValue));
-			((StringValue*) curValue)->value = (char*) malloc(sizeof(char)
-					* (strlen(valueTag->xml) + 1));
-			strcpy(((StringValue*) curValue)->value, valueTag->xml);
-
-		} else if (strcmp(valueTag->name, "data") == 0) {
+			((StringValue*)curValue)->value = (char*) malloc(sizeof(char) * (strlen(valueTag->xml) + 1));
+			strcpy(((StringValue*)curValue)->value, valueTag->xml);
+		} else if(strcmp(valueTag->name, "data") == 0) {
+			size_t len;
 			curValue->type = DataType;
 			curValue = (DictValue*) realloc(curValue, sizeof(DataValue));
-			((DataValue*) curValue)->value = (char*) malloc(sizeof(char)
-					* (strlen(valueTag->xml) + 1));
-			strcpy(((DataValue*) curValue)->value, valueTag->xml);
-
-		} else if (strcmp(valueTag->name, "integer") == 0) {
+			((DataValue*)curValue)->value = decodeBase64(valueTag->xml, &len);
+			((DataValue*)curValue)->len = len;
+		} else if(strcmp(valueTag->name, "integer") == 0) {
 			curValue->type = IntegerType;
 			curValue = (DictValue*) realloc(curValue, sizeof(IntegerValue));
 			sscanf(valueTag->xml, "%d", &(((IntegerValue*) curValue)->value));
@@ -232,33 +215,25 @@ void removeKey(Dictionary* dict, char* key) {
 			if (toRelease->next) {
 				toRelease->next->prev = toRelease->prev;
 			}
-
-			switch (toRelease->type) {
-			case DictionaryType:
-				releaseDictionary((Dictionary*) toRelease);
-				break;
-
-			case ArrayType:
-				releaseArray((ArrayValue*) toRelease);
-				break;
-
-			case StringType:
-				free(((StringValue*) (toRelease))->value);
-				free(toRelease->key);
-				free(toRelease);
-				break;
-
-			case DataType:
-				free(((DataValue*) (toRelease))->value);
-				free(toRelease->key);
-				free(toRelease);
-				break;
-
-			case IntegerType:
-			case BoolType:
-				free(toRelease->key);
-				free(toRelease);
-				break;
+			switch(toRelease->type) {
+				case DictionaryType:
+					releaseDictionary((Dictionary*) toRelease);
+					break;
+				case ArrayType:
+					releaseArray((ArrayValue*) toRelease);
+					break;
+				case StringType:
+					free(((StringValue*)(toRelease))->value);
+					free(toRelease->key);
+					free(toRelease);
+					break;
+				case DataType:
+					free(((DataValue*)(toRelease))->value);
+				case IntegerType:
+				case BoolType:
+					free(toRelease->key);
+					free(toRelease);
+					break;
 			}
 			return;
 		}
@@ -308,17 +283,14 @@ void createDictionary(Dictionary* myself, char* xml) {
 		} else if(strcmp(valueTag->name, "string") == 0) {
 			curValue->type = StringType;
 			curValue = (DictValue*) realloc(curValue, sizeof(StringValue));
-			((StringValue*) curValue)->value = (char*) malloc(sizeof(char)
-					* (strlen(valueTag->xml) + 1));
-			strcpy(((StringValue*) curValue)->value, valueTag->xml);
-
+			((StringValue*)curValue)->value = (char*) malloc(sizeof(char) * (strlen(valueTag->xml) + 1));
+			strcpy(((StringValue*)curValue)->value, valueTag->xml);
 		} else if(strcmp(valueTag->name, "data") == 0) {
+			size_t len;
 			curValue->type = DataType;
 			curValue = (DictValue*) realloc(curValue, sizeof(DataValue));
-			((DataValue*) curValue)->value = (char*) malloc(sizeof(char)
-					* (strlen(valueTag->xml) + 1));
-			strcpy(((DataValue*) curValue)->value, valueTag->xml);
-
+			((DataValue*)curValue)->value = decodeBase64(valueTag->xml, &len);
+			((DataValue*)curValue)->len = len;
 		} else if(strcmp(valueTag->name, "integer") == 0) {
 			curValue->type = IntegerType;
 			curValue = (DictValue*) realloc(curValue, sizeof(IntegerValue));
@@ -401,14 +373,18 @@ char* getXmlFromArrayValue(ArrayValue* myself, int tabsCount) {
 			toReturnSize += sizeof(char) * (strlen(buffer) + 1);
 			toReturn = realloc(toReturn, toReturnSize);
 			toReturn = strcat(toReturn, buffer);
-
 		} else if(curValue->type == DataType) {
-			sprintf(buffer, "%s\t<data>%s</data>\n", tabs,
-					((StringValue*) curValue)->value);
+			char* base64 = convertBase64(((DataValue*)curValue)->value, ((DataValue*)curValue)->len, 0, -1);
+			sprintf(buffer, "%s\t<data>", tabs);
+			toReturnSize += sizeof(char) * (strlen(buffer) + strlen(base64) + 1);
+			toReturn = realloc(toReturn, toReturnSize);
+			toReturn = strcat(toReturn, buffer);
+			toReturn = strcat(toReturn, base64);
+			sprintf(buffer, "</data>\n");
 			toReturnSize += sizeof(char) * (strlen(buffer) + 1);
 			toReturn = realloc(toReturn, toReturnSize);
 			toReturn = strcat(toReturn, buffer);
-
+			free(base64);
 		} else if(curValue->type == IntegerType) {
 			sprintf(buffer, "%s\t<integer>%d</integer>\n", tabs,
 					((IntegerValue*) curValue)->value);
@@ -481,14 +457,18 @@ char* getXmlFromDictionary(Dictionary* myself, int tabsCount) {
 			toReturnSize += sizeof(char) * (strlen(buffer) + 1);
 			toReturn = realloc(toReturn, toReturnSize);
 			toReturn = strcat(toReturn, buffer);
-
 		} else if(curValue->type == DataType) {
-			sprintf(buffer, "%s\t<data>%s</data>\n", tabs,
-					((DataValue*) curValue)->value);
+			char* base64 = convertBase64(((DataValue*)curValue)->value, ((DataValue*)curValue)->len, 0, -1);
+			sprintf(buffer, "%s\t<data>", tabs);
+			toReturnSize += sizeof(char) * (strlen(buffer) + strlen(base64) + 1);
+			toReturn = realloc(toReturn, toReturnSize);
+			toReturn = strcat(toReturn, buffer);
+			toReturn = strcat(toReturn, base64);
+			sprintf(buffer, "</data>\n");
 			toReturnSize += sizeof(char) * (strlen(buffer) + 1);
 			toReturn = realloc(toReturn, toReturnSize);
 			toReturn = strcat(toReturn, buffer);
-
+			free(base64);
 		} else if(curValue->type == IntegerType) {
 			sprintf(buffer, "%s\t<integer>%d</integer>\n", tabs,
 					((IntegerValue*) curValue)->value);
@@ -535,7 +515,6 @@ Dictionary* createRoot(char* xml) {
 	if(dict == NULL) {
 		return NULL;
 	}
-
 	dict->dValue.next = NULL;
 	dict->dValue.key = malloc(sizeof("root"));
 	strcpy(dict->dValue.key, "root");
